@@ -1,25 +1,84 @@
+using BillSplitting.Domain.ValueObjects;
+
 namespace BillSplitting.Domain.Entities;
 
 public class Bill
 {
-    public int Id { get; set; }
-    public decimal TotalAmount { get; set; }
-    public DateTime Date { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
-    // fields:
-    // participants
-    // debts
-    // paidByPersonId ??
+    private readonly List<BillParticipant> _participants = new();
+    public int Id { get; private set; }
+    public decimal TotalAmount { get; private set; }
+    public DateTime Date { get; private set; }
+    public DateTime CreatedAt { get; private set; }
+    public DateTime UpdatedAt { get; private set; }
+    public CurrencyCode CurrencyCode { get; private set; }
+   
+    public IReadOnlyCollection<BillParticipant> Participants => _participants;
 
+
+    public Bill(decimal totalAmount, DateTime date, string currencyCode)
+    {
+        if (totalAmount <= 0m)
+        {
+            throw new ArgumentOutOfRangeException(nameof(totalAmount), "Total amount must be greater than zero.");
+        }
+        if (date > DateTime.UtcNow)
+        {
+            throw new ArgumentOutOfRangeException(nameof(date), "Date cannot be in the future.");
+        }
+        TotalAmount = decimal.Round(totalAmount, 2);
+        Date = date;
+        CurrencyCode = CurrencyCode.From(currencyCode);
+        CreatedAt = DateTime.UtcNow;
+        UpdatedAt = CreatedAt;
+    }
+
+
+    public bool AddParticipant(int personId)
+    {
+        // Implementation to add a participant to the bill      
+        if (personId <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(personId), "Person ID must be greater than zero.");
+        }
+
+        if (_participants.Any(p => p.PersonId == personId))
+        {
+            return false; // Participant already exists, so skip adding and return false to indicate no change
+        }
+        _participants.Add(new BillParticipant(Id, personId));
+        UpdatedAt = DateTime.UtcNow;
+        return true; // Participant added successfully
+    }
     
-    // methods:
-    // AddParticipant()
-    // ValidateShares() - ensure total shares = TotalAmount, no negative shares, etc.
-    // GenerateDebts() - create debts based on shares and total amount
-    
-    //
-    // validations: total shares must equal TotalAmount 
-    // validations: payer must be part of the bill
-    // validations: no negative shares
+    public IReadOnlyCollection<Debt> GenerateDebts()
+    {
+        if (Participants.Count < 2)
+        {
+            throw new InvalidOperationException("At least two participants are required to generate debts.");
+        }
+
+        var shareAmount = decimal.Round(TotalAmount / Participants.Count, 2);
+        var debts = new List<Debt>();
+
+        foreach (var participant in Participants)
+        {
+            debts.Add(new Debt(
+                debtorPersonId: participant.PersonId,
+                originalAmount: shareAmount,
+                currencyCode: CurrencyCode,
+                billId: Id
+            ));
+        }
+
+        return debts;
+    }
+
+    // Invariants:
+    // TotalAmount must be > 0
+    // Date cannot be in the future
+    // Participants > 1
+    // no duplicate participants
+    // share per person = totalAmount / participant count
+    // all amounts in a bill are in one currency
+
 }
