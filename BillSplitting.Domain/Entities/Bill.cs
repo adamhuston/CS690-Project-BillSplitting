@@ -11,11 +11,10 @@ public class Bill
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
     public CurrencyCode CurrencyCode { get; private set; }
-   
+    public string Description { get; private set; }
     public IReadOnlyCollection<BillParticipant> Participants => _participants;
 
-
-    public Bill(decimal totalAmount, DateTime date, string currencyCode)
+    public Bill(decimal totalAmount, DateTime date, string currencyCode, string description = "")
     {
         if (totalAmount <= 0m)
         {
@@ -30,6 +29,12 @@ public class Bill
         CurrencyCode = CurrencyCode.From(currencyCode);
         CreatedAt = DateTime.UtcNow;
         UpdatedAt = CreatedAt;
+        Description = string.IsNullOrWhiteSpace(description)
+            ? string.Empty
+            : description.Trim().Length > 50
+                ? throw new ArgumentException("Description cannot exceed 50 characters.", nameof(description))
+                : description.Trim();
+
     }
 
 
@@ -62,11 +67,14 @@ public class Bill
 
         foreach (var participant in Participants)
         {
-            debts.Add(new Debt(
-                debtorPersonId: participant.PersonId,
-                originalAmount: shareAmount,
-                currencyCode: CurrencyCode,
-                billId: Id
+            debts.Add(
+                Debt.FromBill(
+                    debtorPersonId: participant.PersonId, 
+                    amount: shareAmount, 
+                    currencyCode: CurrencyCode, 
+                    date: Date, 
+                    billId: Id, 
+                    description: Description
             ));
         }
 

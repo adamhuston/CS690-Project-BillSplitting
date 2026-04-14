@@ -10,27 +10,36 @@ public class Debt
     public decimal OriginalAmount { get; private set; }
     public decimal RemainingAmount { get; private set; }
     public bool Settled => RemainingAmount == 0;
+    public string Description { get; private set; }
     public CurrencyCode CurrencyCode { get; private set; }
+    public DateTime Date { get; private set; }
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
 
-    public Debt(int debtorPersonId, decimal originalAmount, CurrencyCode currencyCode, int? billId)
+    public Debt(int debtorPersonId, decimal originalAmount, CurrencyCode currencyCode, int? billId, DateTime date, string description = "")
     {
         if (debtorPersonId <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(debtorPersonId), "Debtor person ID must be greater than zero.");
         }
-        DebtorPersonId = debtorPersonId;
-        CurrencyCode = currencyCode;
-        BillId = billId;
+
         if (originalAmount <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(originalAmount), "Original amount must be greater than zero.");
         }
+        DebtorPersonId = debtorPersonId;
         OriginalAmount = originalAmount;
         RemainingAmount = originalAmount;
+        CurrencyCode = currencyCode;
+        Date = date;
+        BillId = billId;
         CreatedAt = DateTime.UtcNow;
         UpdatedAt = DateTime.UtcNow;
+        Description = string.IsNullOrWhiteSpace(description)
+            ? string.Empty
+            : description.Trim().Length > 50
+                ? throw new ArgumentException("Description cannot exceed 50 characters.", nameof(description))
+                : description.Trim();
         // currency code should be set by the Bill when generating debts, so we can leave it as default here
     }
 
@@ -68,8 +77,20 @@ public class Debt
         UpdatedAt = DateTime.UtcNow;
         return true;
     }
-    // invariants:
+    
+    public static Debt Record( int debtorPersonId, decimal amount, string currencyCode, DateTime date, string description = "")
+    {
+        return new Debt( debtorPersonId: debtorPersonId, originalAmount: amount, currencyCode: CurrencyCode.From(currencyCode), date: date, billId: null, description: description);
+    }
 
-    // exactly 1 creditor (user) and 1 debtor (person)
+    public static Debt FromBill(int debtorPersonId, decimal amount, CurrencyCode currencyCode, DateTime date, int billId, string description = "")
+    {
+        if (billId <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(billId), "Bill ID must be greater than zero.");
+        }
+        
+        return new Debt( debtorPersonId: debtorPersonId, originalAmount: amount, currencyCode: currencyCode, date: date, billId: billId, description: description);
+    }
     
 }
