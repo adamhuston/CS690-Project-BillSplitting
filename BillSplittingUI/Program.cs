@@ -1,7 +1,7 @@
 ﻿using BillSplitting.Application;
 using BillSplitting.Data;
 
-var debtRepository = new InMemoryDebtRepository();
+var debtRepository = new CsvDebtRepository("debts.csv");
 var handler = new RecordDebtHandler(debtRepository);
 var devMode = args.Contains("--dev");
 

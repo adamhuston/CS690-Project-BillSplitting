@@ -33,7 +33,7 @@ public class Bill
             ? string.Empty
             : description.Trim().Length > 50
                 ? throw new ArgumentException("Description cannot exceed 50 characters.", nameof(description))
-                : description.Trim();
+                : description.Trim().Replace(",", "");
 
     }
 

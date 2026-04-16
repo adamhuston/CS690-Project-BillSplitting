@@ -39,7 +39,7 @@ public class Debt
             ? string.Empty
             : description.Trim().Length > 50
                 ? throw new ArgumentException("Description cannot exceed 50 characters.", nameof(description))
-                : description.Trim();
+                : description.Trim().Replace(",", ""); // remove commas to avoid issues with CSV storage
         // currency code should be set by the Bill when generating debts, so we can leave it as default here
     }
 
