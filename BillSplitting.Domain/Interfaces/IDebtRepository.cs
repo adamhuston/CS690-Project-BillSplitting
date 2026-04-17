@@ -13,5 +13,6 @@ public interface IDebtRepository
 {
     Debt Add(Debt debt); // returns the debt with its Id assigned. Called by application layer after creating this entity
     Debt? GetById(int id); // viewing debts
-    IReadOnlyCollection<Debt> GetAll(); // viewing all debts
+    IReadOnlyCollection<Debt> GetAll(); // viewing all debts 
+    void Update(Debt debt); // updating debts
 }

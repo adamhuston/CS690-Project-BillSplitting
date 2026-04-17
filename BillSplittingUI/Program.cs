@@ -4,14 +4,18 @@ using Spectre.Console;
 
 var debtRepository = new CsvDebtRepository("debts.csv");
 var handler = new RecordDebtHandler(debtRepository);
+var paymentRepository = new CsvPaymentRepository("payments.csv");
+var paymentHandler = new RecordPaymentHandler(paymentRepository, debtRepository);
 
-AnsiConsole.Write(
-    new FigletText("BillSplitter").Color(Color.Green)
-);
+
 
 while (true)
 {
     AnsiConsole.Clear();
+    var font = FigletFont.Load("BillSplittingUI/fonts/cybermedium.flf");
+    AnsiConsole.Write(
+        new FigletText(font, "Billsplitter").Color(Color.Green).Centered()
+    );
 
     var allDebts = debtRepository.GetAll();
     var totalOwed = allDebts.Where(d => !d.Settled).Sum(d => d.RemainingAmount);
@@ -38,7 +42,7 @@ while (true)
             RecordDebt(handler);
             break;
         case "Record a Payment":
-            RecordPayment();
+            RecordPayment(paymentHandler, debtRepository);
             break;
         case "Record a Bill":
             RecordBill();
@@ -119,12 +123,181 @@ static void RecordDebt(RecordDebtHandler handler)
     }
 }
 
-static void RecordPayment()
+static void RecordPayment(RecordPaymentHandler handler, CsvDebtRepository debtRepository)
 {
-    AnsiConsole.MarkupLine("[yellow]Record a Payment - Not Implemented Yet[/]");
-    AnsiConsole.MarkupLine("[grey]This feature will allow you to record payments made towards debts, reducing the amount owed.[/]");
+    AnsiConsole.Write(new Rule("[yellow]Record a Payment[/]"));
+
+    // show unsettled debts
+    var unsettledDebts = debtRepository.GetAll().Where(d => !d.Settled).ToList();
+    if (unsettledDebts.Count == 0)
+    {
+        AnsiConsole.MarkupLine("[grey]No unsettled debts.[/]");
+        AnsiConsole.MarkupLine("[grey0]Press any key to return to the main menu...[/]");
+        Console.ReadKey(true);
+        return;
+    }
+
+    var debtTable = new Table();
+    debtTable.AddColumn("ID");
+    debtTable.AddColumn("Description");
+    debtTable.AddColumn("Debtor ID");
+    debtTable.AddColumn("Remaining");
+
+    foreach (var d in unsettledDebts)
+    {
+        debtTable.AddRow(
+            d.Id.ToString(),
+            d.Description,
+            d.DebtorPersonId.ToString(),
+            d.RemainingAmount.ToString("C")
+        );
+    }
+    AnsiConsole.Write(debtTable);
+
+    // collect allocations
+    var allocations = new List<AllocationLine>();
+    var addMore = true;
+
+    while (addMore)
+    {
+        var debtChoice = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+
+                .Title("Select a debt:")
+                .AddChoices(unsettledDebts.Select(d=>
+                {
+                    var allocated = allocations.Where(a=> a.DebtId == d.Id).Sum(a => a.Amount);
+                    var remaining = d.RemainingAmount - allocated;
+                    return allocated > 0
+                        ? $"{d.Id}: {d.Description} ({remaining:C} [yellow](-{allocated:C})[/])"
+                        : $"{d.Id}: {d.Description} ({remaining:C})";
+                }))
+        );
+        var debtId = int.Parse(debtChoice.Split(':')[0]);
+
+        var debt = unsettledDebts.First(d => d.Id == debtId);
+        
+        var alreadyAllocated = allocations
+            .Where(a => a.DebtId == debtId)
+            .Sum(a => a.Amount);
+        var effectiveRemaining = debt.RemainingAmount - alreadyAllocated;
+
+        if (effectiveRemaining <= 0)
+        {
+            AnsiConsole.MarkupLine($"[red]Debt ID {debtId} is already fully allocated. Please choose a different debt.[/]");
+            continue;
+        }
+
+    
+        var amount = AnsiConsole.Prompt(
+            new TextPrompt<decimal>($"Enter amount: (Remaining: {debt.RemainingAmount:C})" + 
+                (alreadyAllocated > 0 ? $" [yellow](-{alreadyAllocated:C})[/]" : ""))
+                .Validate(amount => amount <= 0 
+                    ? ValidationResult.Error("[red]Amount must be a positive number.[/]") 
+                    : amount > effectiveRemaining
+                    ? ValidationResult.Error($"[red]Amount exceeds remaining balance of {effectiveRemaining:C}. Please enter a valid amount.[/]")
+                    : ValidationResult.Success())
+        );
+        allocations.Add(new AllocationLine(debtId, amount));
+
+        // y / n / review
+        var nextAction = "Done";
+
+        while (true)
+        {
+            nextAction = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("Next Action:")
+                    .AddChoices("Allocate to another debt", "Review allocations", "Done")
+            );
+            if (nextAction == "Review allocations")
+            {
+                var reviewTable = new Table();
+                reviewTable.AddColumn("Debt ID");
+                reviewTable.AddColumn("Description");
+                reviewTable.AddColumn("Amount");
+                reviewTable.AddColumn("Allocated");
+                reviewTable.AddColumn("After Payment");
+                foreach (var d in unsettledDebts)
+                {
+                    var allocated = allocations
+                        .Where(a => a.DebtId == d.Id)
+                        .Sum(a => a.Amount);
+                    if (allocated > 0)
+                    {
+                        reviewTable.AddRow(
+                            d.Id.ToString(),
+                            d.Description,
+                            d.RemainingAmount.ToString("C"),
+                            $"[yellow]-{allocated:C}[/]",
+                            $"[green]{(d.RemainingAmount - allocated):C}[/]"
+                        );
+                    }
+                }
+                AnsiConsole.Write(reviewTable);
+            }
+            else
+            {
+                break;
+            }        
+        }
+        addMore = nextAction == "Allocate to another debt";
+    }
+    var totalAmount = allocations.Sum(a => a.Amount);
+    var dateInput = AnsiConsole.Prompt(
+        new TextPrompt<string>("Enter Payment Date (YYYY-MM-DD) or press enter to use today's date:")
+            .AllowEmpty()
+            .Validate(dateStr => string.IsNullOrEmpty(dateStr) || DateTime.TryParse(dateStr, out _) 
+                ? ValidationResult.Success() 
+                : ValidationResult.Error("[red]Invalid date format. Please use YYYY-MM-DD.[/]")));
+
+    DateTime date;
+    if (string.IsNullOrWhiteSpace(dateInput))
+    {
+        date = DateTime.UtcNow.Date;
+    }
+    else if (!DateTime.TryParse(dateInput, out date))
+    {
+        AnsiConsole.MarkupLine("[red]Invalid date format. Please use YYYY-MM-DD.[/]");
+        return;
+    }
+
+    var command = new RecordPaymentCommand(
+        Amount: totalAmount,
+        Date: date,
+        CurrencyCode: "USD",
+        Allocations: allocations
+    );
+
+    try
+    {
+        var result = handler.Handle(command);
+        AnsiConsole.MarkupLine("[green]Payment recorded successfully![/]");
+
+        var resultTable = new Table();
+        resultTable.AddColumn("Debt ID");
+        resultTable.AddColumn("Description");
+        resultTable.AddColumn("Amount Applied");
+        resultTable.AddColumn("Remaining Balance");
+        foreach (var a in result.AllocationResults)
+        {
+            var desc = unsettledDebts.FirstOrDefault(d=> d.Id == a.DebtId)?.Description ?? "";
+            resultTable.AddRow(
+                a.DebtId.ToString(),
+                desc,
+                a.Amount.ToString("C"),
+                a.DebtRemainingBalance.ToString("C"));
+        }
+        AnsiConsole.Write(resultTable);
+    }
+    catch (Exception ex)
+    {
+        AnsiConsole.MarkupLine($"[red]Error: {ex.Message}[/]");
+    }
+
     AnsiConsole.MarkupLine("[grey0]Press any key to return to the main menu...[/]");
     Console.ReadKey(true);
+
 }
 
 static void RecordBill()

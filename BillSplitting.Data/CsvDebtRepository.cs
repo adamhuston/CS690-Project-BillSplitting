@@ -89,4 +89,26 @@ public class CsvDebtRepository : IDebtRepository
     {
         return _debts.AsReadOnly();
     }
+
+    public void Update(Debt debt)
+    {
+        var lines = new List<string> { Header };
+        foreach (var d in _debts)
+        {
+            var line = string.Join(",",
+                d.Id,
+                d.BillId?.ToString() ?? "",
+                d.DebtorPersonId,
+                d.OriginalAmount,
+                d.RemainingAmount,
+                d.CurrencyCode.Value,
+                d.Description,
+                d.Date.ToString("o"),
+                d.CreatedAt.ToString("o"),
+                d.UpdatedAt.ToString("o")
+            );
+            lines.Add(line);
+        }
+        File.WriteAllLines(_filePath, lines);
+    }
 }
