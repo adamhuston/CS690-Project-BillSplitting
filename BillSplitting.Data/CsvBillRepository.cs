@@ -57,10 +57,11 @@ public class CsvBillRepository : IBillRepository
         var line = string.Join(",",
             bill.Id,
             bill.TotalAmount,
+            bill.Date.ToString("o"),
             bill.CurrencyCode,
             bill.Description,
-            bill.CreatedAt,
-            bill.UpdatedAt,
+            bill.CreatedAt.ToString("o"),
+            bill.UpdatedAt.ToString("o"),
             string.Join(";", bill.Participants.Select(p => p.PersonId))
         );
         File.AppendAllText(_filePath, line + Environment.NewLine);

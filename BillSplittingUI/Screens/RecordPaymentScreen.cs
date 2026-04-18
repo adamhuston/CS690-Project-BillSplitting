@@ -9,11 +9,12 @@ public class RecordPaymentScreen : IScreen
 {
     private readonly RecordPaymentHandler _handler;
     private readonly IDebtRepository _debtRepository;
-
-    public RecordPaymentScreen(RecordPaymentHandler handler, IDebtRepository debtRepository)
+    private readonly IPersonRepository _personRepository;
+    public RecordPaymentScreen(RecordPaymentHandler handler, IDebtRepository debtRepository, IPersonRepository personRepository)
     {
         _handler = handler;
         _debtRepository = debtRepository;
+        _personRepository = personRepository;
     }
 
     public void Show()
@@ -29,19 +30,22 @@ public class RecordPaymentScreen : IScreen
             Console.ReadKey(true);
             return;
         }
-
+        string GetPersonName(int personId)
+        {
+            return _personRepository.GetById(personId)?.Name ?? $"Person #{personId}";
+        }
         var debtTable = new Table();
         debtTable.AddColumn("ID");
+        debtTable.AddColumn("Name");
         debtTable.AddColumn("Description");
-        debtTable.AddColumn("Debtor ID");
         debtTable.AddColumn("Remaining");
 
         foreach (var d in unsettledDebts)
         {
             debtTable.AddRow(
                 d.Id.ToString(),
+                GetPersonName(d.DebtorPersonId),
                 d.Description,
-                d.DebtorPersonId.ToString(),
                 d.RemainingAmount.ToString("C")
             );
         }
@@ -61,9 +65,10 @@ public class RecordPaymentScreen : IScreen
                     {
                         var allocated = allocations.Where(a=> a.DebtId == d.Id).Sum(a => a.Amount);
                         var remaining = d.RemainingAmount - allocated;
+                        var name = GetPersonName(d.DebtorPersonId);
                         return allocated > 0
-                            ? $"{d.Id}: {d.Description} ({remaining:C} [yellow](-{allocated:C})[/])"
-                            : $"{d.Id}: {d.Description} ({remaining:C})";
+                            ? $"{d.Id}: {name} - {d.Description} ({remaining:C} [yellow](-{allocated:C})[/])"
+                            : $"{d.Id}: {name} - {d.Description} ({remaining:C})";
                     }))
             );
             var debtId = int.Parse(debtChoice.Split(':')[0]);
@@ -81,7 +86,6 @@ public class RecordPaymentScreen : IScreen
                 continue;
             }
 
-        
             var amount = AnsiConsole.Prompt(
                 new TextPrompt<decimal>($"Enter amount: (Remaining: {debt.RemainingAmount:C})" + 
                     (alreadyAllocated > 0 ? $" [yellow](-{alreadyAllocated:C})[/]" : ""))
@@ -107,6 +111,7 @@ public class RecordPaymentScreen : IScreen
                 {
                     var reviewTable = new Table();
                     reviewTable.AddColumn("Debt ID");
+                    reviewTable.AddColumn("Name");
                     reviewTable.AddColumn("Description");
                     reviewTable.AddColumn("Amount");
                     reviewTable.AddColumn("Allocated");
@@ -120,6 +125,7 @@ public class RecordPaymentScreen : IScreen
                         {
                             reviewTable.AddRow(
                                 d.Id.ToString(),
+                                GetPersonName(d.DebtorPersonId),
                                 d.Description,
                                 d.RemainingAmount.ToString("C"),
                                 $"[yellow]-{allocated:C}[/]",
@@ -152,14 +158,18 @@ public class RecordPaymentScreen : IScreen
 
             var resultTable = new Table();
             resultTable.AddColumn("Debt ID");
+            resultTable.AddColumn("Name");
             resultTable.AddColumn("Description");
             resultTable.AddColumn("Amount Applied");
             resultTable.AddColumn("Remaining Balance");
             foreach (var a in result.AllocationResults)
             {
-                var desc = unsettledDebts.FirstOrDefault(d=> d.Id == a.DebtId)?.Description ?? "";
+                var debt = unsettledDebts.FirstOrDefault(d => d.Id == a.DebtId);
+                var name = debt != null ? GetPersonName(debt.DebtorPersonId) : "Unknown";
+                var desc = debt?.Description ?? "";
                 resultTable.AddRow(
                     a.DebtId.ToString(),
+                    name,
                     desc,
                     a.Amount.ToString("C"),
                     a.DebtRemainingBalance.ToString("C"));

@@ -1,3 +1,2 @@
 Id,TotalAmount,Date,CurrencyCode,Description,CreatedAt,UpdatedAt,ParticipantPersonIds
-1,500,USD,trix,4/18/2026 12:45:40 AM,4/18/2026 12:45:40 AM,1;2;3
-2,40,USD,treats,4/18/2026 12:46:17 AM,4/18/2026 12:46:17 AM,1;2
+1,1000,2026-04-18T00:00:00.0000000Z,USD,really good drawings,2026-04-18T03:10:52.9919912Z,2026-04-18T03:10:52.9922917Z,1;2;3

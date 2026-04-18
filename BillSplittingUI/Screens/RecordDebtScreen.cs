@@ -1,4 +1,5 @@
 using BillSplitting.Application;
+using BillSplitting.Domain.Interfaces;
 using BillSplittingUI.Helpers;
 using Spectre.Console;
 
@@ -7,9 +8,11 @@ namespace BillSplittingUI.Screens;
 public class RecordDebtScreen : IScreen
 {
     private readonly RecordDebtHandler _handler;
-    public RecordDebtScreen(RecordDebtHandler handler)
+    private readonly IPersonRepository _personRepository;
+    public RecordDebtScreen(RecordDebtHandler handler, IPersonRepository personRepository)
     {
         _handler = handler;
+        _personRepository = personRepository;
     }
 
     public void Show()
@@ -17,11 +20,7 @@ public class RecordDebtScreen : IScreen
 
         AnsiConsole.Write(new Rule("[yellow]Record a Debt[/]"));
 
-        var debtorPersonId = AnsiConsole.Prompt(
-            new TextPrompt<int>("Enter Debtor Person ID:")
-                .Validate(id => id > 0 ? 
-                    ValidationResult.Success() 
-                    : ValidationResult.Error("[red]Person ID must be a positive integer.[/]")));
+        var person = PromptHelpers.PromptForPerson(_personRepository, "Who owes you?");
 
         var amount = AnsiConsole.Prompt(
             new TextPrompt<decimal>("Enter Amount Owed:")
@@ -38,7 +37,7 @@ public class RecordDebtScreen : IScreen
                 .AllowEmpty());
 
         var command = new RecordDebtCommand(
-            DebtorPersonId: debtorPersonId,
+            DebtorPersonId: person.Id,
             Amount: amount,
             Date: date,
             CurrencyCode: "USD",
@@ -52,7 +51,7 @@ public class RecordDebtScreen : IScreen
             table.AddColumn("Field");
             table.AddColumn("Value");
             table.AddRow("ID", result.Id.ToString());
-            table.AddRow("Debtor ID", result.DebtorPersonId.ToString());
+            table.AddRow("Debtor", person.Name);
             table.AddRow("Amount", result.Amount.ToString("C"));
             table.AddRow("Date", result.Date.ToString("yyyy-MM-dd"));
             table.AddRow("Description", result.Description);
@@ -62,6 +61,7 @@ public class RecordDebtScreen : IScreen
         {
             AnsiConsole.MarkupLine($"[red]Error: {ex.Message}[/]");
         }
-    
+        AnsiConsole.MarkupLine("[grey]Press any key to return to the main menu...[/]");
+        Console.ReadKey(true);
     }
 }

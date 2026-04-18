@@ -1,4 +1,6 @@
 using BillSplitting.Application;
+using BillSplitting.Domain.Entities;
+using BillSplitting.Domain.Interfaces;
 using BillSplittingUI.Helpers;
 using Spectre.Console;
 
@@ -7,10 +9,12 @@ namespace BillSplittingUI.Screens;
 public class RecordBillScreen : IScreen
 {
     private readonly CreateBillHandler _handler;
+    private readonly IPersonRepository _personRepository;
 
-    public RecordBillScreen(CreateBillHandler handler)
+    public RecordBillScreen(CreateBillHandler handler, IPersonRepository personRepository)
     {
         _handler = handler;
+        _personRepository = personRepository;
     }
 
     public void Show()
@@ -35,24 +39,21 @@ public class RecordBillScreen : IScreen
                 .AllowEmpty());
         
         // UC3-FR5
-        var participantIds = new List<int>();
-        AnsiConsole.MarkupLine("[grey]Enter Participant Person IDs (enter blank line to finish):[/]");
+        var participants = new List<Person>();
+        AnsiConsole.MarkupLine("[grey]Add participants (at least 2 required)[/]");
 
         while (true)
         {
-            var personId = AnsiConsole.Prompt(
-                new TextPrompt<int>($"Enter Participant Person ID #{participantIds.Count + 1}:")
-                    .Validate(id => id <= 0
-                        ? ValidationResult.Error("[red]Person ID must be a positive integer.[/]")
-                        : participantIds.Contains(id)
-                        ? ValidationResult.Error("[red]That person is already a participant. Please enter a different ID.[/]")
-                        : ValidationResult.Success())
-            );
-            participantIds.Add(personId);
+            var excludedIds = participants.Select(p => p.Id).ToList();
+            var person = PromptHelpers.PromptForPerson(
+                _personRepository,
+                $"Enter Participant #{participants.Count + 1}:",
+                excludedIds);
+            participants.Add(person);    
 
-            if (participantIds.Count < 2)
+            if (participants.Count < 2)
             {
-                AnsiConsole.MarkupLine("[yellow]At least 2 participants are required. Please enter another ID.[/]");
+                AnsiConsole.MarkupLine("[yellow]At least 2 participants are required.[/]");
                 continue;
             }
 
@@ -63,14 +64,14 @@ public class RecordBillScreen : IScreen
             }
         }
 
-        var shareAmount = decimal.Round(amount / participantIds.Count, 2);
+        var shareAmount = decimal.Round(amount / participants.Count, 2);
         var summaryTable = new Table();
         summaryTable.AddColumn("Field");
         summaryTable.AddColumn("Value");
         summaryTable.AddRow("Total Amount", amount.ToString("C"));
         summaryTable.AddRow("Date", date.ToString("yyyy-MM-dd"));
         summaryTable.AddRow("Description", string.IsNullOrWhiteSpace(description) ? "[grey]None[/]" : description);
-        summaryTable.AddRow("Participants", string.Join(", ", participantIds));
+        summaryTable.AddRow("Participants", string.Join(", ", participants.Select(p=> p.Name)));
         summaryTable.AddRow("Each Participant's Share", shareAmount.ToString("C"));
         AnsiConsole.Write(summaryTable);
 
@@ -87,7 +88,7 @@ public class RecordBillScreen : IScreen
             Date: date,
             CurrencyCode: "USD",
             Description: description,
-            ParticipantPersonIds: participantIds
+            ParticipantPersonIds: participants.Select(p => p.Id).ToList()
         );
 
         try
@@ -97,13 +98,15 @@ public class RecordBillScreen : IScreen
             var resultTable = new Table();
 
             resultTable.AddColumn("Debt Id");
-            resultTable.AddColumn("Debtor ID");
+            resultTable.AddColumn("Name");
             resultTable.AddColumn("Amount Owed");
             foreach (var debt in result.Debts)
             {
+                var name = participants.FirstOrDefault(p => p.Id == debt.DebtorPersonId)?.Name 
+                    ?? $"Person #{debt.DebtorPersonId}";
                 resultTable.AddRow(
                     debt.DebtId.ToString(),
-                    debt.DebtorPersonId.ToString(),
+                    name,
                     debt.Amount.ToString("C")   
                 );
             }
